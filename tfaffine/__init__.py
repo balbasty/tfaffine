@@ -338,4 +338,4 @@ def affine_exp(prm, basis):
                          .format(prm.shape[-1], basis.shape[0]))
 
     # Reconstruct the log-matrix and exponentiate
-    return tf.linalg.expm(tf.sum(basis*prm[:, None, None], axis=-3))
+    return tf.linalg.expm(tf.reduce_sum(basis*prm[:, None, None], axis=-3))
