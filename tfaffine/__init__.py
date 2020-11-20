@@ -283,9 +283,9 @@ def affine_basis(dim, group='SE',  dtype=tf.float32):
         raise ValueError('Unknown group {}.'.format(group))
 
     if group == 'T':
-        return affine_subbasis('T', dim, dtype=dtype)
+        return affine_subbasis(dim, 'T', dtype=dtype)
     elif group == 'SO':
-        return affine_subbasis('R', dim, dtype=dtype)
+        return affine_subbasis(dim, 'R', dtype=dtype)
     elif group == 'SE':
         return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
                           affine_subbasis(dim, 'R', dtype=dtype)), axis=0)
