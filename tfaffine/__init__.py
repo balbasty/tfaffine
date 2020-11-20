@@ -18,6 +18,108 @@ import tensorflow as tf
 import math
 
 
+def affine_exp(prm, basis):
+    r"""Reconstruct an affine matrix from its Lie parameters.
+
+    Parameters
+    ----------
+    prm : (..., F) tensor
+        Parameters in the Lie algebra.
+
+    basis : (F, D+1, D+1) tensor
+        Basis of the Lie algebras.
+
+    Returns
+    -------
+    mat : (..., D+1, D+1) tensor
+        Reconstructed affine matrix.
+
+    """
+
+    # Check length
+    if prm.shape[-1] != basis.shape[0]:
+        raise ValueError('Number of parameters and number of bases do '
+                         'not match. Got {} and {}'
+                         .format(prm.shape[-1], basis.shape[0]))
+
+    # Reconstruct the log-matrix and exponentiate
+    return tf.linalg.expm(tf.reduce_sum(basis*prm[..., None, None], axis=-3))
+
+
+def affine_basis(dim, group='SE', dtype=tf.float32):
+    """Generate a basis set for the algebra of some (Lie) group of matrices.
+
+    The basis is returned in homogeneous coordinates, even if
+    the group does not require translations. To extract the linear
+    part of the basis: lin = basis[:-1, :-1].
+
+    This function focuses on 'classic' Lie groups. Note that, while it
+    is commonly used in registration software, we do not have a
+    "9-parameter affine" (translations + rotations + zooms),
+    because such transforms do not form a group; that is, their inverse
+    may contain shears.
+
+    Parameters
+    ----------
+    dim : {2, 3}
+        Dimension
+    group : {'T', 'SO', 'SE', 'D', 'CSO', 'SL', 'GL+', 'Aff+'}, default='SE'
+        Group that should be encoded by the basis set:
+            * 'T'   : Translations
+            * 'SO'  : Special Orthogonal (rotations)
+            * 'SE'  : Special Euclidean (translations + rotations)
+            * 'D'   : Dilations (translations + isotropic scalings)
+            * 'CSO' : Conformal Special Orthogonal
+                      (translations + rotations + isotropic scalings)
+            * 'SL'  : Special Linear (rotations + isovolumic zooms + shears)
+            * 'GL+' : General Linear [det>0] (rotations + zooms + shears)
+            * 'Aff+': Affine [det>0] (translations + rotations + zooms + shears)
+    dtype : tf.dtype, default=tf.float32
+        Data type of the returned array
+
+    Returns
+    -------
+    basis : (F, dim+1, dim+1) tensor[dtype]
+        Basis set, where ``F`` is the number of basis functions.
+
+    """
+
+    if dim not in (2, 3):
+        raise ValueError('Dimension must be 2 or 3. Got {}.'.format(dim))
+    if group not in ('T', 'SO', 'SE', 'D', 'CSO', 'SL', 'GL+', 'Aff+'):
+        raise ValueError('Unknown group {}.'.format(group))
+
+    if group == 'T':
+        return affine_subbasis(dim, 'T', dtype=dtype)
+    elif group == 'SO':
+        return affine_subbasis(dim, 'R', dtype=dtype)
+    elif group == 'SE':
+        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
+                          affine_subbasis(dim, 'R', dtype=dtype)), axis=0)
+    elif group == 'D':
+        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
+                          affine_subbasis(dim, 'I', dtype=dtype)), axis=0)
+    elif group == 'CSO':
+        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
+                          affine_subbasis(dim, 'R', dtype=dtype),
+                          affine_subbasis(dim, 'I', dtype=dtype)), axis=0)
+    elif group == 'SL':
+        return tf.concat((affine_subbasis(dim, 'R', dtype=dtype),
+                          affine_subbasis(dim, 'Z0', dtype=dtype),
+                          affine_subbasis(dim, 'S', dtype=dtype)), axis=0)
+    elif group == 'GL+':
+        return tf.concat((affine_subbasis(dim, 'R', dtype=dtype),
+                          affine_subbasis(dim, 'Z', dtype=dtype),
+                          affine_subbasis(dim, 'S', dtype=dtype)), axis=0)
+    elif group == 'Aff+':
+        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
+                          affine_subbasis(dim, 'R', dtype=dtype),
+                          affine_subbasis(dim, 'Z', dtype=dtype),
+                          affine_subbasis(dim, 'S', dtype=dtype)), axis=0)
+    else:
+        assert False
+
+
 def affine_subbasis(dim, mode, dtype=tf.float32):
     """Generate a basis set for the algebra of some (Lie) group of matrices.
 
@@ -237,105 +339,3 @@ def affine_subbasis(dim, mode, dtype=tf.float32):
         assert False
 
     return tf.convert_to_tensor(basis, dtype=dtype)
-
-
-def affine_basis(dim, group='SE',  dtype=tf.float32):
-    """Generate a basis set for the algebra of some (Lie) group of matrices.
-
-    The basis is returned in homogeneous coordinates, even if
-    the group does not require translations. To extract the linear
-    part of the basis: lin = basis[:-1, :-1].
-
-    This function focuses on 'classic' Lie groups. Note that, while it
-    is commonly used in registration software, we do not have a
-    "9-parameter affine" (translations + rotations + zooms),
-    because such transforms do not form a group; that is, their inverse
-    may contain shears.
-
-    Parameters
-    ----------
-    dim : {2, 3}
-        Dimension
-    group : {'T', 'SO', 'SE', 'D', 'CSO', 'SL', 'GL+', 'Aff+'}, default='SE'
-        Group that should be encoded by the basis set:
-            * 'T'   : Translations
-            * 'SO'  : Special Orthogonal (rotations)
-            * 'SE'  : Special Euclidean (translations + rotations)
-            * 'D'   : Dilations (translations + isotropic scalings)
-            * 'CSO' : Conformal Special Orthogonal
-                      (translations + rotations + isotropic scalings)
-            * 'SL'  : Special Linear (rotations + isovolumic zooms + shears)
-            * 'GL+' : General Linear [det>0] (rotations + zooms + shears)
-            * 'Aff+': Affine [det>0] (translations + rotations + zooms + shears)
-    dtype : tf.dtype, default=tf.float32
-        Data type of the returned array
-
-    Returns
-    -------
-    basis : (F, dim+1, dim+1) tensor[dtype]
-        Basis set, where ``F`` is the number of basis functions.
-
-    """
-
-    if dim not in (2, 3):
-        raise ValueError('Dimension must be 2 or 3. Got {}.'.format(dim))
-    if group not in ('T', 'SO', 'SE', 'D', 'CSO', 'SL', 'GL+', 'Aff+'):
-        raise ValueError('Unknown group {}.'.format(group))
-
-    if group == 'T':
-        return affine_subbasis(dim, 'T', dtype=dtype)
-    elif group == 'SO':
-        return affine_subbasis(dim, 'R', dtype=dtype)
-    elif group == 'SE':
-        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
-                          affine_subbasis(dim, 'R', dtype=dtype)), axis=0)
-    elif group == 'D':
-        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
-                          affine_subbasis(dim, 'I', dtype=dtype)), axis=0)
-    elif group == 'CSO':
-        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
-                          affine_subbasis(dim, 'R', dtype=dtype),
-                          affine_subbasis(dim, 'I', dtype=dtype)), axis=0)
-    elif group == 'SL':
-        return tf.concat((affine_subbasis(dim, 'R', dtype=dtype),
-                          affine_subbasis(dim, 'Z0', dtype=dtype),
-                          affine_subbasis(dim, 'S', dtype=dtype)), axis=0)
-    elif group == 'GL+':
-        return tf.concat((affine_subbasis(dim, 'R', dtype=dtype),
-                          affine_subbasis(dim, 'Z', dtype=dtype),
-                          affine_subbasis(dim, 'S', dtype=dtype)), axis=0)
-    elif group == 'Aff+':
-        return tf.concat((affine_subbasis(dim, 'T', dtype=dtype),
-                          affine_subbasis(dim, 'R', dtype=dtype),
-                          affine_subbasis(dim, 'Z', dtype=dtype),
-                          affine_subbasis(dim, 'S', dtype=dtype)), axis=0)
-    else:
-        assert False
-
-
-def affine_exp(prm, basis):
-    r"""Reconstruct an affine matrix from its Lie parameters.
-
-    Parameters
-    ----------
-    prm : (..., F) tensor
-        Parameters in the Lie algebra.
-
-    basis : (F, D+1, D+1) tensor
-        Basis of the Lie algebras.
-
-    Returns
-    -------
-    mat : (..., D+1, D+1) tensor
-        Reconstructed affine matrix.
-
-    """
-
-    # Check length
-    if prm.shape[-1] != basis.shape[0]:
-        raise ValueError('Number of parameters and number of bases do '
-                         'not match. Got {} and {}'
-                         .format(prm.shape[-1], basis.shape[0]))
-
-    # Reconstruct the log-matrix and exponentiate
-    return tf.linalg.expm(tf.reduce_sum(basis*prm[..., None, None], axis=-3))
