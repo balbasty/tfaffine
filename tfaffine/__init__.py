@@ -1,12 +1,21 @@
 """
 Affine matrices encoded in their Lie algebra, in tensorflow.
 
+Layers
+------
+AffineExp(dim: int, transform_type: str)
+    .call((N, F) tensor) -> (N, dim+1, dim+1) tensor
+AffineLog(dim: int, transform_type: str)
+    .call((N, dim+1, dim+1) tensor) -> (N, F) tensor
+
 Functions
 ---------
 affine_basis(dim: int, group: str) -> (F, dim+1, dim+1) tensor
     Generate the basis of an algebra
 affine_exp(prm: (N, F) tensor, basis: tensor) -> (N, dim+1, dim+1) tensor
     Exponential Lie parameters into an affine matrix
+affine_log(prm: (N, dim+1, dim+1) tensor, basis: tensor) -> (N, F) tensor
+    Recover Lie parameters from an affine matrix
 
 Authors
 -------
@@ -16,6 +25,100 @@ Authors
 """
 import tensorflow as tf
 import math
+
+
+class AffineExp(tf.keras.layers.Layer):
+    """Affine exponentiation layer
+
+    Build (D+1)x(D+1) affine matrices from Lie parameters.
+    """
+    def __init__(self, dim, transform_type='rigid'):
+        """
+
+        Parameters
+        ----------
+        dim : {2, 3}
+            Dimension
+        transform_type : {'rigid', 'rigid+scale', 'affine'}, default='rigid'
+            Transformation type
+        """
+        super().__init__()
+        self.dim = dim
+        self.transform_type = transform_type
+        self.basis = None
+
+    def build(self, input_shape):
+        group = self.transform_type
+        if group not in groups:
+            if group == 'rigid':
+                group = 'SE'
+            elif group == 'rigid+scale':
+                group = 'CSO'
+            else:
+                group = 'Aff+'
+        basis = affine_basis(self.dim, group)
+        self.basis = tf.Variable(initial_value=basis)
+
+    def call(self, prm):
+        """
+
+        Parameters
+        ----------
+        prm : (batch, nb_param) tensor
+            Parameters of the affine transform in the Lie algebra.
+            `nb_param` depends on the dimension and transformation type:
+            - 'rigid' : dim + (dim*(dim-1)//2)
+            - 'rigid+scale' : dim + (dim*(dim-1)//2) + 1
+            - 'affine' : dim * (dim + 1)
+        """
+        if isinstance(prm, (list, tuple)):
+            prm = prm[0]
+        return affine_exp(prm, self.basis)
+
+
+class AffineLog(tf.keras.layers.Layer):
+    """Affine logarithm layer
+
+    Recover Lie parameters from (D+1)x(D+1) affine matrices.
+    """
+    def __init__(self, dim, transform_type='rigid'):
+        """
+
+        Parameters
+        ----------
+        dim : {2, 3}
+            Dimension
+        transform_type : {'rigid', 'rigid+scale', 'affine'}, default='rigid'
+            Transformation type
+        """
+        super().__init__()
+        self.dim = dim
+        self.transform_type = transform_type
+        self.basis = None
+
+    def build(self, input_shape):
+        group = self.transform_type
+        if group not in groups:
+            if group == 'rigid':
+                group = 'SE'
+            elif group == 'rigid+scale':
+                group = 'CSO'
+            else:
+                group = 'Aff+'
+        basis = affine_basis(self.dim, group)
+        self.basis = tf.Variable(initial_value=basis)
+
+    def call(self, affine):
+        """
+
+        Parameters
+        ----------
+        affine : (batch, dim+1, dim+1) tensor
+            Batch of (square) affine matrices
+        """
+        if isinstance(affine, (list, tuple)):
+            prm = affine[0]
+        return affine_log(affine, self.basis)
 
 
 def affine_exp(prm, basis):
@@ -44,6 +147,52 @@ def affine_exp(prm, basis):
 
     # Reconstruct the log-matrix and exponentiate
     return tf.linalg.expm(tf.reduce_sum(basis*prm[..., None, None], axis=-3))
+
+
+def affine_log(mat, basis):
+    """Recover Lie parameters from an affine matrix.
+
+    Parameters
+    ----------
+    mat : (..., D+1, D+1) tensor
+        Reconstructed affine matrix.
+    basis : (F, D+1, D+1) tensor
+        Basis of the Lie algebras.
+
+    Returns
+    -------
+    prm : (..., F) tensor
+        Parameters in the Lie algebra.
+    """
+    mat = tf.linalg.logm(mat)
+    prm = mdot(mat[..., None, :, :], basis)
+    return tf.math.real(prm)
+
+
+def mdot(a, b):
+    """Compute the Frobenius inner product of two matrices
+
+    Parameters
+    ----------
+    a : (..., N, M) tensor
+        Left matrix
+    b : (..., N, M) tensor
+        Right matrix
+
+    Returns
+    -------
+    dot : (...) tensor
+        Matrix inner product
+
+    References
+    ----------
+    ..[1] https://en.wikipedia.org/wiki/Frobenius_inner_product
+
+    """
+    return tf.linalg.trace(tf.linalg.matmul(a, b, adjoint_a=True))
+
+
+groups = ('T', 'SO', 'SE', 'D', 'CSO', 'SL', 'GL+', 'Aff+')
 
 
 def affine_basis(dim, group='SE', dtype=tf.float32):
