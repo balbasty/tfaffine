@@ -164,9 +164,12 @@ def affine_log(mat, basis):
     prm : (..., F) tensor
         Parameters in the Lie algebra.
     """
+    dtype = mat.dtype
+    mat = tf.cast(mat, tf.complex128)
     mat = tf.linalg.logm(mat)
     prm = mdot(mat[..., None, :, :], basis)
-    return tf.math.real(prm)
+    prm = tf.cast(tf.math.real(prm), dtype)
+    return prm
 
 
 def mdot(a, b):
