@@ -167,6 +167,7 @@ def affine_log(mat, basis):
     dtype = mat.dtype
     mat = tf.cast(mat, tf.complex128)
     mat = tf.linalg.logm(mat)
+    mat = tf.cast(tf.math.real(mat), dtype)
     prm = mdot(mat[..., None, :, :], basis)
     prm = tf.cast(tf.math.real(prm), dtype)
     return prm
