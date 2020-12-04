@@ -56,8 +56,7 @@ class AffineExp(tf.keras.layers.Layer):
                 group = 'CSO'
             else:
                 group = 'Aff+'
-        basis = affine_basis(self.dim, group)
-        self.basis = basis
+        self.basis = affine_basis(self.dim, group)
 
     def call(self, prm):
         """
@@ -105,8 +104,7 @@ class AffineLog(tf.keras.layers.Layer):
                 group = 'CSO'
             else:
                 group = 'Aff+'
-        basis = affine_basis(self.dim, group)
-        self.basis = basis
+        self.basis = affine_basis(self.dim, group)
 
     def call(self, affine):
         """
