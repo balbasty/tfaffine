@@ -57,7 +57,7 @@ class AffineExp(tf.keras.layers.Layer):
             else:
                 group = 'Aff+'
         basis = affine_basis(self.dim, group)
-        self.basis = tf.Variable(initial_value=basis, trainable=False)
+        self.basis = basis
 
     def call(self, prm):
         """
@@ -106,7 +106,7 @@ class AffineLog(tf.keras.layers.Layer):
             else:
                 group = 'Aff+'
         basis = affine_basis(self.dim, group)
-        self.basis = tf.Variable(initial_value=basis, trainable=False)
+        self.basis = basis
 
     def call(self, affine):
         """
