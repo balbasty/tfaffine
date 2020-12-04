@@ -32,7 +32,7 @@ class AffineExp(tf.keras.layers.Layer):
 
     Build (D+1)x(D+1) affine matrices from Lie parameters.
     """
-    def __init__(self, dim, transform_type='rigid'):
+    def __init__(self, dim, transform_type='rigid', add_identity=False):
         """
 
         Parameters
@@ -41,10 +41,15 @@ class AffineExp(tf.keras.layers.Layer):
             Dimension
         transform_type : {'rigid', 'rigid+scale', 'affine'}, default='rigid'
             Transformation type
+        add_identity : bool, default=False
+            If `False`, the identity is subtracted from the output matrix
+            so that a shift is effectively encoded (`y = x + A @ x`)
+            If `True`, the identity is kept in there (`y = A @ x`).
         """
         super().__init__()
         self.dim = dim
         self.transform_type = transform_type
+        self.add_identity = add_identity
         self.basis = None
 
     def build(self, input_shape):
@@ -73,7 +78,10 @@ class AffineExp(tf.keras.layers.Layer):
         """
         if isinstance(prm, (list, tuple)):
             prm = prm[0]
-        return affine_exp(prm, self.basis)
+        aff = affine_exp(prm, self.basis)
+        if not self.add_identity:
+            aff -= tf.eye(self.dim + 1)
+        return aff
 
 
 class AffineLog(tf.keras.layers.Layer):
@@ -81,7 +89,7 @@ class AffineLog(tf.keras.layers.Layer):
 
     Recover Lie parameters from (D+1)x(D+1) affine matrices.
     """
-    def __init__(self, dim, transform_type='rigid'):
+    def __init__(self, dim, transform_type='rigid', add_identity=True):
         """
 
         Parameters
@@ -90,10 +98,15 @@ class AffineLog(tf.keras.layers.Layer):
             Dimension
         transform_type : {'rigid', 'rigid+scale', 'affine'}, default='rigid'
             Transformation type
+        add_identity : bool, default=True
+            If `True`, the identity is added to the input matrix, which
+            is assumed to encode a shift (`y = x + A @ x`)
+            If `False`, the identity is already in there (`y = A @ x`).
         """
         super().__init__()
         self.dim = dim
         self.transform_type = transform_type
+        self.add_identity = add_identity
         self.basis = None
 
     def build(self, input_shape):
@@ -117,7 +130,9 @@ class AffineLog(tf.keras.layers.Layer):
             Batch of (square) affine matrices
         """
         if isinstance(affine, (list, tuple)):
-            prm = affine[0]
+            affine = affine[0]
+        if self.add_identity:
+            affine += tf.eye(self.dim + 1)
         return affine_log(affine, self.basis)
 
 
